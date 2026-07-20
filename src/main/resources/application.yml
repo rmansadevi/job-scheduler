@@ -1,0 +1,12 @@
+spring:
+  application:
+    name: jobscheduler
+
+  datasource:
+    url: jdbc:postgresql://localhost:5432/jobscheduler
+    username: postgres
+    password: postgres
+
+  jpa:
+    hibernate:
+      ddl-auto: update
