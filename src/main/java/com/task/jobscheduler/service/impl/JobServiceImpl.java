@@ -7,7 +7,9 @@ import com.task.jobscheduler.enums.JobStatus;
 import com.task.jobscheduler.exception.JobNotFoundException;
 import com.task.jobscheduler.mapper.JobMapper;
 import com.task.jobscheduler.repository.JobRepository;
+import com.task.jobscheduler.scheduler.JobChangedEvent;
 import com.task.jobscheduler.service.JobService;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.scheduling.support.CronExpression;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -20,10 +22,12 @@ public class JobServiceImpl implements JobService {
 
     private final JobRepository jobRepository;
     private final JobMapper jobMapper;
+    private final ApplicationEventPublisher eventPublisher;
 
-    public JobServiceImpl(JobRepository jobRepository, JobMapper jobMapper) {
+    public JobServiceImpl(JobRepository jobRepository, JobMapper jobMapper, ApplicationEventPublisher eventPublisher) {
         this.jobRepository = jobRepository;
         this.jobMapper = jobMapper;
+        this.eventPublisher = eventPublisher;
     }
 
     @Override
@@ -36,6 +40,7 @@ public class JobServiceImpl implements JobService {
         job.setStatus(request.getStatus() != null ? request.getStatus() : JobStatus.ACTIVE);
 
         Job saved = jobRepository.save(job);
+        eventPublisher.publishEvent(new JobChangedEvent(saved.getId(), JobChangedEvent.ChangeType.UPSERTED));
         return jobMapper.toResponse(saved);
     }
 
@@ -53,6 +58,7 @@ public class JobServiceImpl implements JobService {
         }
 
         Job saved = jobRepository.save(job);
+        eventPublisher.publishEvent(new JobChangedEvent(saved.getId(), JobChangedEvent.ChangeType.UPSERTED));
         return jobMapper.toResponse(saved);
     }
 
@@ -79,6 +85,7 @@ public class JobServiceImpl implements JobService {
             throw new JobNotFoundException(id);
         }
         jobRepository.deleteById(id);
+        eventPublisher.publishEvent(new JobChangedEvent(id, JobChangedEvent.ChangeType.DELETED));
     }
 
     private void validateCronExpression(String cronExpression) {
