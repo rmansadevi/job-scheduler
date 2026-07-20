@@ -1,8 +1,11 @@
 package com.task.jobscheduler.scheduler;
 
 import com.task.jobscheduler.entity.Job;
+import com.task.jobscheduler.entity.JobExecution;
+import com.task.jobscheduler.enums.ExecutionStatus;
 import com.task.jobscheduler.enums.JobStatus;
 import com.task.jobscheduler.repository.JobRepository;
+import com.task.jobscheduler.service.JobExecutionService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
@@ -31,14 +34,17 @@ public class JobSchedulerEngine {
     private final TaskScheduler taskScheduler;
     private final Executor jobTaskExecutor;
     private final JobRepository jobRepository;
+    private final JobExecutionService jobExecutionService;
     private final Map<Long, ScheduledJobHandle> scheduledJobs = new ConcurrentHashMap<>();
 
     public JobSchedulerEngine(TaskScheduler taskScheduler,
                                @Qualifier("jobTaskExecutor") Executor jobTaskExecutor,
-                               JobRepository jobRepository) {
+                               JobRepository jobRepository,
+                               JobExecutionService jobExecutionService) {
         this.taskScheduler = taskScheduler;
         this.jobTaskExecutor = jobTaskExecutor;
         this.jobRepository = jobRepository;
+        this.jobExecutionService = jobExecutionService;
     }
 
     @EventListener(ApplicationReadyEvent.class)
@@ -103,12 +109,31 @@ public class JobSchedulerEngine {
     }
 
     private void execute(Job job) {
-        log.info("Job '{}' (id={}) execution started", job.getName(), job.getId());
+        JobExecution execution;
         try {
-            // Placeholder for the actual job payload; execution history persistence lands separately.
-            log.info("Job '{}' (id={}) execution completed", job.getName(), job.getId());
+            execution = jobExecutionService.startExecution(job.getId());
         } catch (Exception ex) {
-            log.error("Job '{}' (id={}) execution failed: {}", job.getName(), job.getId(), ex.getMessage(), ex);
+            log.error("Failed to record execution start for job '{}' (id={}): {}",
+                    job.getName(), job.getId(), ex.getMessage(), ex);
+            return;
+        }
+
+        log.info("Job '{}' (id={}) execution started (executionId={})", job.getName(), job.getId(), execution.getId());
+        try {
+            // Placeholder for the actual job payload; real task logic will be plugged in later.
+            recordCompletion(job, execution.getId(), ExecutionStatus.SUCCESS, null);
+        } catch (Exception ex) {
+            recordCompletion(job, execution.getId(), ExecutionStatus.FAILED, ex.getMessage());
+        }
+    }
+
+    private void recordCompletion(Job job, Long executionId, ExecutionStatus status, String errorMessage) {
+        try {
+            jobExecutionService.completeExecution(executionId, status, errorMessage);
+            log.info("Job '{}' (id={}) execution {} (executionId={})", job.getName(), job.getId(), status, executionId);
+        } catch (Exception ex) {
+            log.error("Failed to record execution completion for job '{}' (id={}, executionId={}): {}",
+                    job.getName(), job.getId(), executionId, ex.getMessage(), ex);
         }
     }
 
